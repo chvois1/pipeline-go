@@ -1,0 +1,42 @@
+@startuml
+namespace main {
+    class Job << (S,Aquamarine) >> {
+        + Id string
+        + Cmd string
+        + Status string
+
+    }
+    class Law << (S,Aquamarine) >> {
+        + Name string
+        + Definition string
+
+    }
+    class Message << (S,Aquamarine) >> {
+        + Id int
+        + State int
+        + Description string
+
+    }
+    class Pipe << (S,Aquamarine) >> {
+        - mu sync.RWMutex
+        - subs <font color=blue>map</font>[string][]<font color=blue>chan</font> Message
+        - closed bool
+
+        + Subscribe(topic string) <font color=blue>chan</font> Message
+        + Publish(topic string, msg Message) 
+        + UpdateState(w http.ResponseWriter, r *http.Request) 
+        + Monitor(w http.ResponseWriter, r *http.Request) 
+        + Notify(w http.ResponseWriter, r *http.Request) 
+        + FileReceiver(interval time.Duration, done <font color=blue>chan</font> <font color=blue>interface</font>{}, msgStream <font color=blue>chan</font> Message) <font color=blue>chan</font> Message
+        + DataIntegrity(interval time.Duration, done <font color=blue>chan</font> <font color=blue>interface</font>{}, msgStream <font color=blue>chan</font> Message) <font color=blue>chan</font> Message
+        + DataDispatcher(interval time.Duration, done <font color=blue>chan</font> <font color=blue>interface</font>{}, msgStream <font color=blue>chan</font> Message) <font color=blue>chan</font> Message
+        + FileMaker(interval time.Duration, done <font color=blue>chan</font> <font color=blue>interface</font>{}, msgStream <font color=blue>chan</font> Message) <font color=blue>chan</font> Message
+        + DataArchiver(interval time.Duration, done <font color=blue>chan</font> <font color=blue>interface</font>{}, msgStream <font color=blue>chan</font> Message) <font color=blue>chan</font> Message
+        + FileSender(interval time.Duration, done <font color=blue>chan</font> <font color=blue>interface</font>{}, msgStream <font color=blue>chan</font> Message) <font color=blue>chan</font> Message
+        + Sink(interval time.Duration, done <font color=blue>chan</font> <font color=blue>interface</font>{}, msgStream <font color=blue>chan</font> Message) 
+
+    }
+}
+
+
+@enduml

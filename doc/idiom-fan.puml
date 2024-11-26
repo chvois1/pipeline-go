@@ -1,0 +1,34 @@
+@startuml idiom-fan
+
+actor "Host" as host
+actor "User" as usr
+
+Database "Data input" as inputData {
+}
+frame "Generator\n(Goroutine)" as generator {
+}
+frame "Source\n(Goroutine)" as source {
+}
+frame "Task 1\n(Goroutine)" as task1 {
+}
+frame "Task 2\n(Goroutine)" as task2 {
+}
+frame "Task n\n(Goroutine)" as taskn {
+}
+frame "Merge\n(Goroutine)" as merge {
+}
+frame "Sink\n(Goroutine)" as sink {
+}
+
+host -> inputData: > collection of\ndata types
+inputData --> generator: collection of\ndata types
+generator --> source: channel\n(data stream)
+source --> task1: channel
+source --> task2: fan out\n(data stream)
+source --> taskn: channel
+task1 --> merge: channel
+task2 --> merge: fan in\n(data stream)
+taskn --> merge: channel
+merge --> sink: channel\n(data stream)
+usr <- sink: > Collection of\n data types
+@enduml

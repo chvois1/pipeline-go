@@ -1,0 +1,29 @@
+@startuml overview-concurrency
+
+frame "Is it a performance\ncritical section ?" as frm1
+frame "Are you trying to transfer\nownership of data ?" as frm2
+frame "Are you trying to guard \ninternal state of a struct ?" as frm3
+frame "Are you trying to coordinate\nmultiple pieces of logic ?" as frm4
+frame "Use Primitives" as frm5 #LightBlue
+note left
+Shared memory model (Dijkstra 1965)
+mutual exclusion algorithm
+end note
+frame "Use Channels" as frm6 #LightBlue
+note left
+CSP (Hoare 1978)
+Communicating Sequential Processes
+endnote
+
+frm1 -> frm2: No
+frm2 -> frm3: No
+frm3 -> frm4: No
+
+frm6 <-- frm2: Yes
+frm6 <-- frm4: Yes
+
+frm1 --> frm5: Yes
+frm3 --> frm5: Yes
+frm4 --> frm5: No
+
+@enduml

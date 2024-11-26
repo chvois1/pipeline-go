@@ -1,0 +1,55 @@
+@startuml history
+skin Blue
+
+object "ALGOL 60" as algol60 {
+  Backus et al., 1960
+}
+object "Pascal" as pascal {
+  Wirth, 1970
+}
+object "Modula-2" as modula2 {
+  Wirth, 1980
+}
+object "Oberon" as oberon {
+  Wirth & Gutknetch, 1986
+}
+object "Oberon-2" as oberon2 {
+  Wirth & Mossenbock, 1991
+}
+object "Go" as golang {
+  Griesemer, Pike & Thomson, 2009
+}
+object CSP {
+  Hoare, 1978
+}
+object Squeak {
+  Cardelli & Pike, 1985
+}
+object Newsqueak {
+  Pike, 1989
+}
+object Alef {
+  Winterbottom, 1992
+}
+object C {
+  Ritchie, 1972
+}
+
+
+algol60 --> pascal
+algol60 --> C
+pascal -[hidden] C
+C --> golang
+CSP -[hidden] modula2
+pascal --> modula2
+modula2 --> oberon
+oberon --> oberon2
+oberon2 --> golang
+CSP --> Squeak
+Squeak --> Newsqueak
+Newsqueak --> Alef
+pascal -[hidden]-> CSP
+pascal --> Newsqueak 
+Alef --> golang
+
+@enduml
