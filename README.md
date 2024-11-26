@@ -12,7 +12,7 @@ The figure below shows the most important influences of earlier programming lang
 ![Origins of Go](./doc/history.png "Origins of Go")
 
 #### CSP
-Communicating Sequential Processes (CSP) is a formal language for describing patterns of interaction in concurrent systems. CSP is the favored model but SHM is still available.
+Communicating Sequential Processes (CSP) is a formal language for describing patterns of interaction in concurrent systems. CSP is the favored model for Go, but SHM is still available.
 
 ![CSP model](./doc/overview-concurrency.png "CSP model")
 
@@ -24,6 +24,8 @@ Concurrency is an ability of a program to do multiple things at the same time. P
 #### Pipes and Filters 
 Pipes and Filters is a pattern to break down a business processing into a set of separate components (i.e. the filters), each performing a single task. A pipeline connects filters with pipes. Filters are independent, self-contained, and typically stateless. Filters receive messages from an inbound pipe and publish messages to a different outbound pipe.
 
+![Pipes and Filters](./doc/pipes_and_filters.png "Pipes and Filters")
+
  If the input and output of a filter are structured as a stream, you can perform the processing for each filter in parallel. The first filter in the pipeline can start its work and output its results, which are passed directly to the next filter in the sequence before the first filter completes its work.
 
 
@@ -32,7 +34,7 @@ Most of time, we describe a pipeline as a series of stages. A pipeline separates
 
 #### Goroutines and Channels
 
-A goroutine is a function that runs independently of the function that started it. we could explain a goroutine as a function that runs as if it were on its own thread. A channel is a pipeline for sending and receiving data. A Channel is like a socket that runs inside a program. Channels provide a way for one goroutine to send structured data to another.
+A goroutine is a function that runs independently of the function that started it. We could explain a goroutine as a function that runs as if it were on its own thread. A channel is a pipeline for sending and receiving data. A Channel is like a socket that runs inside a program. Channels provide a way for one goroutine to send structured data to another.
 
 #### Fan Out and Fan In
 Fan out is used when multiple functions read from the same channel. The reading will stop only when the channel is closed. This characteristic is often used to distribute work amongst a group of workers to parallelize the CPU and I /O.
@@ -76,25 +78,7 @@ Each stage is receiving and emitting a discrete value so that the memory footpri
 	}
 ```
 #### 02-stage
-A first stage is a generator function which takes a variadic slice of integers and convert this discrete set of values into a stream of data on a channel.
-
-```go
-	generator := func(done <-chan interface{}, integers ...int) <-chan int {
-		intStream := make(chan int)
-		go func() {
-			defer close(intStream)
-			for _, i := range integers {
-				select {
-				case <-done:
-					return
-				case intStream <- i:
-				}
-			}
-		}()
-		return intStream
-	}
-```    
-02-stage introduces concurrency in the pipeline with Go's channel primitives.Channels receives and emits value that can safely be used concurently.
+02-stage introduces concurrency in the pipeline with Go's channel primitives. Channels receives and emits value that can safely be used concurently.
 
 ```go
 	add := func(
@@ -116,6 +100,25 @@ A first stage is a generator function which takes a variadic slice of integers a
 		return addedStream
 	}
 ```
+
+A first stage is a generator function which takes a variadic slice of integers and convert this discrete set of values into a stream of data on a channel.
+
+```go
+	generator := func(done <-chan interface{}, integers ...int) <-chan int {
+		intStream := make(chan int)
+		go func() {
+			defer close(intStream)
+			for _, i := range integers {
+				select {
+				case <-done:
+					return
+				case intStream <- i:
+				}
+			}
+		}()
+		return intStream
+	}
+```    
 The first thing 02-stage will do is to create a done channel and call close on it in a defer statement.
 ```go
 	done := make(chan interface{})
