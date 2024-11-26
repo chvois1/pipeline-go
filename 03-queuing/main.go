@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"testing"
@@ -19,9 +18,9 @@ func BenchmarkBufferedWrite(b *testing.B) {
 }
 
 func tmpFileOrFatal() *os.File {
-	file, err := ioutil.TempFile("", "tmp")
+	file, err := os.CreateTemp("", "tmp")
 	if err != nil {
-		log.Fatal("error: %v", err)
+		log.Fatalf("error: %v", err)
 	}
 	return file
 }

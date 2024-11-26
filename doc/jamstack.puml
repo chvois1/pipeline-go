@@ -1,0 +1,29 @@
+@startuml jamstack
+
+skin rose
+actor "User" <<Human>>
+
+package main {
+  package "JAMStack frontend"  as jam  {
+    component "User Interface" as ui
+    component "WebSocket API" as api
+  }
+  note right of jam
+    Embedded
+    JAMstack
+  end note
+  package "Service backend" as front  {
+    component "File Processor" as fp
+  }
+  note right of front
+    Queuing and
+    concurrent stages 
+  end note
+
+}
+
+User --> ui
+ui -- api
+api --> fp
+
+@enduml
