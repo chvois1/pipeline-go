@@ -37,7 +37,6 @@ func (c *Calc) Add(k int) {
 	for i := 0; i < len(c.values); i++ {
 		c.values[i] = k + c.values[i]
 	}
-
 }
 
 func (c *Calc) Display() {
