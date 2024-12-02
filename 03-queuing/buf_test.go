@@ -1,13 +1,17 @@
-package main
+// The buffered write is much faster than the unbeffered.
+// This is because in bufio.writer, the writes are queued internally into a buffer and then written out as a single chunk of data.
+package buf_test
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"testing"
 )
 
+// GOMAXPROCS  controls the number of operating system threads allocated to goroutines.
 func BenchmarkUnbufferedWrite(b *testing.B) {
 	performWrite(b, tmpFileOrFatal())
 }
@@ -25,6 +29,9 @@ func tmpFileOrFatal() *os.File {
 	return file
 }
 
+// Below are two handy generators.
+// - repeat is a generator that will repeat the values we pass to it infinitely until we tell it to stop.
+// - take will only take the first num items of its incoming valueStream and the exit.
 func performWrite(b *testing.B, writer io.Writer) {
 	repeat := func(
 		done <-chan interface{},
@@ -68,6 +75,8 @@ func performWrite(b *testing.B, writer io.Writer) {
 	defer close(done)
 
 	b.ResetTimer()
+	// Notice this pipeline stage will only take the first b.N bytes off its incoming valueStream and the exit.
+	fmt.Printf("Number of times we perform the op being mesured: [%d]\n", b.N)
 	for bt := range take(done, repeat(done, byte(0)), b.N) {
 		writer.Write([]byte{bt.(byte)})
 	}

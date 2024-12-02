@@ -37,16 +37,16 @@ type Job struct {
 	Status string `json:"status,omitempty"`
 }
 
-type Pipe struct {
+type Pipeline struct {
 	mu     sync.RWMutex
 	subs   map[string][]chan Message
 	closed bool
 }
 
-func NewPipe() *Pipe {
+func NewPipeline() *Pipeline {
 	log.Println("=> NewPipe")
 	log.Println("<= NewPipe")
-	return &Pipe{
+	return &Pipeline{
 		subs:   make(map[string][]chan Message),
 		closed: false,
 	}
@@ -67,17 +67,17 @@ var upgrader = websocket.Upgrader{
 }
 
 func main() {
-	// ensure the program exits cleanly and never lmeaks goroutines
+	const msgCount = 64
 
 	done := make(chan interface{})
 	defer close(done)
-	p := NewPipe()
+	p := NewPipeline()
 	mux := http.NewServeMux()
 
-	msgStream := Source(1000*time.Millisecond, 64, done)
-	pipeline := p.DataDispatcher(2000*time.Millisecond, done, p.DataIntegrity(500*time.Millisecond, done, p.FileReceiver(1000*time.Millisecond, done, msgStream)))
-	pipeline = p.FileSender(3000*time.Millisecond, done, p.DataArchiver(2000*time.Millisecond, done, p.FileMaker(2000*time.Millisecond, done, pipeline)))
-	p.Sink(2000*time.Millisecond, done, pipeline)
+	msgStream := Source(500*time.Millisecond, msgCount, done)
+	pipes := p.DataDispatcher(2000*time.Millisecond, done, p.DataIntegrity(2000*time.Millisecond, done, p.FileReceiver(500*time.Millisecond, 4, done, msgStream)))
+	pipes = p.FileSender(100*time.Millisecond, done, p.DataArchiver(2000*time.Millisecond, 4, done, p.FileMaker(2000*time.Millisecond, done, pipes)))
+	p.Sink(100*time.Millisecond, done, pipes)
 
 	var port int
 	flag.IntVar(&port, "port", 8080, "The port to listen on")
@@ -114,7 +114,7 @@ func main() {
 // Notice by default a channel can both send and receive data, like func f(c chan string).
 // But we can define a channel as func f(c <- chan string) to have a receive-only chan.
 // Anyway if we want a send only chan, we create it as func f(c chan <- string).
-func (p *Pipe) Subscribe(topic string) <-chan Message {
+func (p *Pipeline) Subscribe(topic string) <-chan Message {
 	log.Println("=> Subscribe")
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -126,7 +126,7 @@ func (p *Pipe) Subscribe(topic string) <-chan Message {
 }
 
 // Publish send a message to all of the channels registered at a given map entry.
-func (p *Pipe) Publish(topic string, msg Message) {
+func (p *Pipeline) Publish(topic string, msg Message) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -142,7 +142,7 @@ func (p *Pipe) Publish(topic string, msg Message) {
 	}
 }
 
-func (p *Pipe) UpdateState(w http.ResponseWriter, r *http.Request) {
+func (p *Pipeline) UpdateState(w http.ResponseWriter, r *http.Request) {
 	log.Println("=> UpdateState")
 	if r.Method != "PUT" {
 		return
@@ -198,7 +198,7 @@ func StateMonitor() Message {
 	return msg
 }
 
-func (p *Pipe) Monitor(w http.ResponseWriter, r *http.Request) {
+func (p *Pipeline) Monitor(w http.ResponseWriter, r *http.Request) {
 	log.Println("=> Monitor")
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -221,7 +221,7 @@ func (p *Pipe) Monitor(w http.ResponseWriter, r *http.Request) {
 // The first one is to use a function to return another handler function.
 // When the function is returned, it will create a closure around the channel.
 // The second is to use a struct which holds the channel as a member and use pointer receiver methods to handle the request.
-func (p *Pipe) Notify(w http.ResponseWriter, r *http.Request) {
+func (p *Pipeline) Notify(w http.ResponseWriter, r *http.Request) {
 	log.Println("=> Notify")
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -255,17 +255,18 @@ func (p *Pipe) Notify(w http.ResponseWriter, r *http.Request) {
 	log.Println("<= Notify")
 }
 
-// Source constructs a buffered channel of message types, with the length equal to the size parameter.
+// Source constructs a new channel of message types.
 // Source starts a goroutine and return the constructed channel.
-// Then on the gourontine created, Source sends up to size new messages on the channel it created.
-// So in a nutshell, the Source  converts a discrete set of values into a stream of data on a channel.
+// Then the gourontine will send up to maxCount messages on the channel created.
+// At a regular interval, source sends only one message at a time on the output channel.
+// So in a nutshell, the source  converts a discrete set of values into a stream of data on a channel.
 // Most of time at the beginning of the pipeline, there is some batch of data one need to convert to a channel.
-func Source(interval time.Duration, siz int, done <-chan interface{}) <-chan Message {
-	msgStream := make(chan Message, 8)
+func Source(interval time.Duration, maxCount int, done <-chan interface{}) <-chan Message {
+	msgStream := make(chan Message)
 	go func() {
 		defer close(msgStream)
 
-		for i := 1; i < siz+1; i++ {
+		for i := 1; i < maxCount+1; i++ {
 			msg := Message{
 				Id:          i,
 				State:       0,
@@ -282,16 +283,19 @@ func Source(interval time.Duration, siz int, done <-chan interface{}) <-chan Mes
 	return msgStream
 }
 
-// FileReceiver pipeline stage
-func (p *Pipe) FileReceiver(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
-	consumerStream := make(chan Message)
+// FileReceiver is the first stage of the pipeline.
+// FileReceiver constructs a new buffered channel of message types.
+// FileReceiver starts a goroutine and return the constructed channel.
+// Then the gourontine will send up to bufSiz messages at a time on the channel created.
+func (p *Pipeline) FileReceiver(interval time.Duration, bufSiz int, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
+	workerStream := make(chan Message, bufSiz)
 	go func() {
-		defer close(consumerStream)
+		defer close(workerStream)
 		for msg := range msgStream {
 			select {
 			case <-done:
 				return
-			case consumerStream <- func(m Message) Message {
+			case workerStream <- func(m Message) Message {
 				time.Sleep(interval)
 				m.State = 1
 				p.Publish(RxEvent, m)
@@ -301,11 +305,11 @@ func (p *Pipe) FileReceiver(interval time.Duration, done <-chan interface{}, msg
 			}
 		}
 	}()
-	return consumerStream
+	return workerStream
 }
 
 // DataIntegrity pipeline stage
-func (p *Pipe) DataIntegrity(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
+func (p *Pipeline) DataIntegrity(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
 	workerStream := make(chan Message)
 	go func() {
 		defer close(workerStream)
@@ -327,7 +331,7 @@ func (p *Pipe) DataIntegrity(interval time.Duration, done <-chan interface{}, ms
 }
 
 // DataIntegrity pipeline stage
-func (p *Pipe) DataDispatcher(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
+func (p *Pipeline) DataDispatcher(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
 	workerStream := make(chan Message)
 	go func() {
 		defer close(workerStream)
@@ -348,7 +352,7 @@ func (p *Pipe) DataDispatcher(interval time.Duration, done <-chan interface{}, m
 	return workerStream
 }
 
-func (p *Pipe) FileMaker(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
+func (p *Pipeline) FileMaker(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
 	workerStream := make(chan Message)
 	go func() {
 		defer close(workerStream)
@@ -369,29 +373,43 @@ func (p *Pipe) FileMaker(interval time.Duration, done <-chan interface{}, msgStr
 	return workerStream
 }
 
-func (p *Pipe) DataArchiver(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
+func (p *Pipeline) DataArchiver(interval time.Duration, bufSiz int, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
 	workerStream := make(chan Message)
 	go func() {
+		msgs := make([]Message, bufSiz)
+		count := 0
 		defer close(workerStream)
 		for msg := range msgStream {
 			select {
 			case <-done:
+				for _, m := range msgs {
+					workerStream <- m
+				}
 				return
-			case workerStream <- func(m Message) Message {
+
+			default:
 				time.Sleep(interval)
-				m.State = 5
-				p.Publish(RxEvent, m)
-				log.Printf("DataArchiver: %v\n", m)
-				return m
-			}(msg):
+				msg.State = 5
+				p.Publish(RxEvent, msg)
+				log.Printf("DataArchiver: %v\n", msg)
+				msgs[count] = msg
+				count++
 			}
+			if count < bufSiz {
+				continue
+			}
+			for _, m := range msgs {
+				workerStream <- m
+			}
+			count = 0
+
 		}
 	}()
 	return workerStream
 }
 
 // FileSender pipeline stage
-func (p *Pipe) FileSender(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
+func (p *Pipeline) FileSender(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) <-chan Message {
 	producerStream := make(chan Message)
 	go func() {
 		defer close(producerStream)
@@ -414,7 +432,7 @@ func (p *Pipe) FileSender(interval time.Duration, done <-chan interface{}, msgSt
 
 // Sink is the final type of a pipeline function.
 // It consumes input from prior stages but does not send output to subsequent pipeline stages.
-func (p *Pipe) Sink(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) {
+func (p *Pipeline) Sink(interval time.Duration, done <-chan interface{}, msgStream <-chan Message) {
 	go func() {
 		msgStream := p.Subscribe(RxEvent)
 		for msg := range msgStream {
